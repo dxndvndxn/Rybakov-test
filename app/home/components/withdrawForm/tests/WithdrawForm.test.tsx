@@ -13,7 +13,7 @@ jest.mock("../../../api", () => ({
   },
 }));
 
-describe("WithdrawForm - Double Submit Protection", () => {
+describe("WithdrawForm", () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
@@ -144,6 +144,62 @@ describe("WithdrawForm - Double Submit Protection", () => {
     // 2. В UI отображается ошибка
     await waitFor(() => {
       expect(screen.getByText(/API Error: Network Error/i)).toBeInTheDocument();
+    });
+
+    // 3. Кнопка снова активна после ошибки
+    expect(submitButton).not.toHaveAttribute("disabled");
+  });
+
+  test("Успешный вызов API", async () => {
+    const user = userEvent.setup();
+
+    (withdrawApi.withdrawals as jest.Mock).mockResolvedValue({
+      status: "pending" as const,
+      id: 42,
+    });
+
+    // === РЕНДЕР ===
+    render(<WithdrawForm />);
+
+    const form = screen.getByTestId("withdraw-form");
+    const amountInput = form.querySelector(
+      'input[name="amount"]',
+    ) as HTMLInputElement;
+    const destinationInput = form.querySelector(
+      'input[name="destination"]',
+    ) as HTMLInputElement;
+    const confirmCheckbox = screen.getByRole("checkbox");
+
+    await user.type(amountInput, "100");
+    await user.type(destinationInput, "0x1234567890");
+    await user.click(confirmCheckbox);
+
+    const submitButton = screen.getByRole("button", { name: /withdraw/i });
+
+    // Проверяем, что кнопка активна перед отправкой
+    expect(submitButton).not.toHaveAttribute("disabled");
+
+    await user.click(submitButton);
+
+    // === ПРОВЕРКИ ===
+
+    // 1. API вызван 1 раз
+    await waitFor(
+      () => {
+        expect(withdrawApi.withdrawals).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 2000 },
+    );
+
+    // 2. В UI отображается ошибка
+    await waitFor(() => {
+      expect(screen.getByText(/Withdrawal id: 42/i)).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Withdrawal status: pending/i),
+      ).toBeInTheDocument();
     });
 
     // 3. Кнопка снова активна после ошибки
